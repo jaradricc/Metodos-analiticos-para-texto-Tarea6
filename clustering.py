@@ -29,54 +29,23 @@ def distancia_frobenius(a,b):
     d = math.sqrt(math.fabs(d))
     return d
 
-def calcula_distanciasf(frases):
+def calcula_distancias(frases, alg):
     distancias = np.zeros((len(frases), len(frases)))
     for x, y in combinations(range(len(frases)), 2):
-        d = distancia_frobenius(frases[x], frases[y])
-        distancias[x,y] = d
-        distancias[y,x] = d
-    return distancias
-
-def calcula_distancias(frases):
-    distancias = np.zeros((len(frases), len(frases)))
-    for x, y in combinations(range(len(frases)), 2):
-        d = distancia_hausdorf(frases[x], frases[y])
+        if alg == 0:
+            d = distancia_hausdorf(frases[x], frases[y])
+        else:
+            d = distancia_frobenius(frases[x], frases[y])
         distancias[x,y] = d
         distancias[y,x] = d
     return distancias
 
 
-
-def major_clustf(frases):
+def major_clust(frases, alg):  # el parámetro alg define el algoritmo de distancia a utilizar: 1 = hausdorf y cualquier otro = frobenius
     clusters = np.array(range(1,len(frases) + 1 )) # cada nodo es un clúster
     # print 'clusters: ', clusters
     ## calculamos las distancias hausdorf entre todos los nodos.
-    distancias = calcula_distanciasf(frases)
-    # print "distancias: ", len(distancias), len(distancias[0]), '\n',distancias
-    ##
-    t = False
-    while not t:
-        t = True
-        for u in range(len(frases)):
-            acum = np.zeros(len(frases))
-            for i in range(len(frases)):
-                acum[clusters[i]-1] += distancias[u,i]
-            minimo = float("inf")
-            for w in range(len(frases)):
-                if acum[w] < minimo and acum[w] != 0:
-                    minimo = acum[w]
-                    wmin = w
-            if clusters[u] != (wmin + 1):
-                clusters[u] = wmin + 1
-                t = False
-
-    return clusters
-
-def major_clust(frases):
-    clusters = np.array(range(1,len(frases) + 1 )) # cada nodo es un clúster
-    # print 'clusters: ', clusters
-    ## calculamos las distancias hausdorf entre todos los nodos.
-    distancias = calcula_distancias(frases)
+    distancias = calcula_distancias(frases,alg)
     # print "distancias: ", len(distancias), len(distancias[0]), '\n',distancias
     ##
     t = False
@@ -191,9 +160,9 @@ clusters_suma = k_medias_euclidiano(np.array(comp_sum), len(corpus))
 
 clusters_mult = k_medias_euclidiano(np.array(comp_mult), len(corpus))
 
-clusters_haus = major_clust(np.array(matrix_phrases))
+clusters_haus = major_clust(np.array(matrix_phrases), 1)
 
-clusters_frob = major_clustf(np.array(matrix_phrases))
+clusters_frob = major_clust(np.array(matrix_phrases),0)
 
 ## Evaluamos resultados
 resultados_suma = validation(keys, clusters_suma)
