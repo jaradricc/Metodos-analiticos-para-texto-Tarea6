@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import gensim
+import math
 from scipy.spatial import distance
+from itertools import combinations
+from random import shuffle
 
 def distancia_euclidiana(a,b):
     return distance.euclidean(a,b)
@@ -17,6 +20,82 @@ def distancia_hausdorf(a,b):
         if d_min > h:
             h = d_min
     return h
+
+def distancia_frobenius(a,b):
+    a = np.matrix(a)
+    b = np.matrix(b)
+    aux = a * b.T
+    d = np.trace(aux)
+    d = math.sqrt(math.fabs(d))
+    return d
+
+def calcula_distanciasf(frases):
+    distancias = np.zeros((len(frases), len(frases)))
+    for x, y in combinations(range(len(frases)), 2):
+        d = distancia_frobenius(frases[x], frases[y])
+        distancias[x,y] = d
+        distancias[y,x] = d
+    return distancias
+
+def calcula_distancias(frases):
+    distancias = np.zeros((len(frases), len(frases)))
+    for x, y in combinations(range(len(frases)), 2):
+        d = distancia_hausdorf(frases[x], frases[y])
+        distancias[x,y] = d
+        distancias[y,x] = d
+    return distancias
+
+
+
+def major_clustf(frases):
+    clusters = np.array(range(1,len(frases) + 1 )) # cada nodo es un clúster
+    # print 'clusters: ', clusters
+    ## calculamos las distancias hausdorf entre todos los nodos.
+    distancias = calcula_distanciasf(frases)
+    # print "distancias: ", len(distancias), len(distancias[0]), '\n',distancias
+    ##
+    t = False
+    while not t:
+        t = True
+        for u in range(len(frases)):
+            acum = np.zeros(len(frases))
+            for i in range(len(frases)):
+                acum[clusters[i]-1] += distancias[u,i]
+            minimo = float("inf")
+            for w in range(len(frases)):
+                if acum[w] < minimo and acum[w] != 0:
+                    minimo = acum[w]
+                    wmin = w
+            if clusters[u] != (wmin + 1):
+                clusters[u] = wmin + 1
+                t = False
+
+    return clusters
+
+def major_clust(frases):
+    clusters = np.array(range(1,len(frases) + 1 )) # cada nodo es un clúster
+    # print 'clusters: ', clusters
+    ## calculamos las distancias hausdorf entre todos los nodos.
+    distancias = calcula_distancias(frases)
+    # print "distancias: ", len(distancias), len(distancias[0]), '\n',distancias
+    ##
+    t = False
+    while not t:
+        t = True
+        for u in range(len(frases)):
+            acum = np.zeros(len(frases))
+            for i in range(len(frases)):
+                acum[clusters[i]-1] += distancias[u,i]
+            minimo = float("inf")
+            for w in range(len(frases)):
+                if acum[w] < minimo and acum[w] != 0:
+                    minimo = acum[w]
+                    wmin = w
+            if clusters[u] != (wmin + 1):
+                clusters[u] = wmin + 1
+                t = False
+
+    return clusters
 
 
 def k_medias_euclidiano(frases , k):
@@ -41,17 +120,53 @@ def k_medias_euclidiano(frases , k):
     return clusters
 
 
+def validation(keys, other):
+    ## un diccionario con las etiquetas de los clusters y una lista de las posiciones en el arreglo que pertenecen a dicho cluster.
+    clustersk = dict()
+    for i in range(len(keys)):
+        if clustersk.has_key(keys[i]):
+            clustersk[keys[i]].append(i)
+        else:
+            clustersk[keys[i]] = [i]
+    ###
+    ## probamos cada uno de los clusters y le asignamos la etiqueta del que mas se parece
+    ## llenamos el diccionario con los clusters generados.
+    clusters = dict()
+    for i in range(len(other)):
+        if clusters.has_key(other[i]):
+            clusters[other[i]].append(i)
+        else:
+            clusters[other[i]] = [i]
+    ##recorremos los clusters comparándolos contra las etiquetas para asignarlas al clúster que mas se parecen
+    resultado = list()
+    for i in clusters.items():
+        sim = 0
+        for j in clustersk.items():
+            aux = 0
+            ## contamos cuantos elementos coinciden con el clusterk
+            for x in i[1]:
+                if x in j[1]:
+                    aux += 1
+            ## si se parece más al cluster, decimos que cluster corresponde al clustersk
+            if aux >= sim:
+                sim = aux
+                tag = str(j[0])
+        resultado.append([i[0], sim, tag]) #(cluster, items iguales, tag)
+    return resultado
+
 arch = open('frases.txt', 'r')
 corpus = list()
+keys = list()
 
 for l in arch:
     if l != "" :
-        corpus.append(l.split("\t"))
+        aux = l.split("\t")
+        corpus.append(aux[0])
+        keys.append(aux[1].rstrip())
 arch.close()
-corpus = dict(corpus)
 
 ## Preparamos las oraciones para meterlas a word2Vec que las recibe a manera de listas de listas de palabras
-phrases = list(map(lambda l: l.split(),corpus.keys() ))
+phrases = list(map(lambda l: l.split(),corpus ))
 model = gensim.models.Word2Vec(phrases,min_count=1)
 ##
 
@@ -72,8 +187,20 @@ matrix_phrases = map(lambda p: map(lambda w: model[w], p), phrases)
 
 ## Ejecución de k-medias usando la composicion de la suma y distancia euclidiana
 
-clusters_suma = k_medias_euclidiano(np.array(comp_sum), len(set(corpus.values())))
+clusters_suma = k_medias_euclidiano(np.array(comp_sum), len(corpus))
 
-clusters_mult = k_medias_euclidiano(np.array(comp_mult), len(set(corpus.values())))
+clusters_mult = k_medias_euclidiano(np.array(comp_mult), len(corpus))
 
-# clusters_haus = k_medias_haus(np.array(matrix_phrases), len(set(corpus.values())))
+clusters_haus = major_clust(np.array(matrix_phrases))
+
+clusters_frob = major_clustf(np.array(matrix_phrases))
+
+## Evaluamos resultados
+resultados_suma = validation(keys, clusters_suma)
+print 'correctamente clasificados con la composición de la suma: ', sum(map(lambda i: i[1],resultados_suma))
+resultados_mult = validation(keys, clusters_mult)
+print 'correctamente clasificados con la composición de la multiplicación: ', sum(map(lambda i: i[1],resultados_mult))
+resultados_haus = validation(keys, clusters_haus)
+print 'correctamente clasificados con la distancia Hausdorf: ', sum(map(lambda i: i[1],resultados_haus))
+resultados_frob = validation(keys, clusters_frob)
+print 'correctamente clasificados con la distancia Frobenius: ', sum(map(lambda i: i[1],resultados_frob))
